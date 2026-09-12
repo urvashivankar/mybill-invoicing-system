@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Build output
+dist/
+server/dist/
+build/
+
+# Database
+*.sqlite
+*.sqlite3
+database.sqlite
+
+# Environment variables
+.env
+.env.local
+.env.production
+server/.env
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp files
+*.tmp
+*.bak
+server/eng.traineddata
+server/test_regex.js
+
+# Coverage
+coverage/
+
+# Vite cache
+.vite/
