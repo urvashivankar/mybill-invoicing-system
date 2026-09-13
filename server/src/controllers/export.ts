@@ -269,8 +269,8 @@ const getHtmlTemplate = (bill: any, settings: any, isQuotation = false) => {
 
 router.get('/:id/pdf', async (req: Request, res: Response) => {
   try {
-    const bill = await Bill.findByPk(req.params.id, { include: [{ model: BillItem, as: 'items' }] });
-    let settings = await BusinessSettings.findOne();
+    const bill = await Bill.findOne({ where: { id: req.params.id, userId: req.userId }, include: [{ model: BillItem, as: 'items' }] });
+    let settings = await BusinessSettings.findOne({ where: { userId: req.userId } });
     if (!settings) settings = {} as any;
     
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
@@ -557,8 +557,8 @@ const generateExcelWorkbook = async (bill: any, settings: any, res: Response, is
 
 router.get('/:id/excel', async (req: Request, res: Response) => {
   try {
-    const bill = await Bill.findByPk(req.params.id, { include: [{ model: BillItem, as: 'items' }] });
-    let settings = await BusinessSettings.findOne();
+    const bill = await Bill.findOne({ where: { id: req.params.id, userId: req.userId }, include: [{ model: BillItem, as: 'items' }] });
+    let settings = await BusinessSettings.findOne({ where: { userId: req.userId } });
     if (!settings) settings = {} as any;
     
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
@@ -712,8 +712,8 @@ const getQuotationHtmlTemplate = (qt: any, settings: any) => {
 
 router.get('/quotation/:id/pdf', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id, { include: [{ model: QuotationItem, as: 'items' }] });
-    let settings = await BusinessSettings.findOne();
+    const qt = await Quotation.findOne({ where: { id: req.params.id, userId: req.userId }, include: [{ model: QuotationItem, as: 'items' }] });
+    let settings = await BusinessSettings.findOne({ where: { userId: req.userId } });
     if (!settings) settings = {} as any;
 
     if (!qt) return res.status(404).json({ error: 'Quotation not found' });
@@ -740,8 +740,8 @@ router.get('/quotation/:id/pdf', async (req: Request, res: Response) => {
 
 router.get('/quotation/:id/excel', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id, { include: [{ model: QuotationItem, as: 'items' }] });
-    let settings = await BusinessSettings.findOne();
+    const qt = await Quotation.findOne({ where: { id: req.params.id, userId: req.userId }, include: [{ model: QuotationItem, as: 'items' }] });
+    let settings = await BusinessSettings.findOne({ where: { userId: req.userId } });
     if (!settings) settings = {} as any;
     
     if (!qt) return res.status(404).json({ error: 'Quotation not found' });
@@ -759,7 +759,7 @@ router.get('/report/sales/excel', async (req: Request, res: Response) => {
   try {
     const { fromDate, toDate } = req.query;
     
-    const whereClause: any = {};
+    const whereClause: any = { userId: req.userId };
     if (fromDate && toDate) {
       whereClause.invoiceDate = {
         [Op.between]: [new Date(fromDate as string), new Date(toDate as string)]

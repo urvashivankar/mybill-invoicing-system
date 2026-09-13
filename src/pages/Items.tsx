@@ -1,19 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Item } from '../types';
-import { Plus, Edit2, Trash2, DownloadCloud } from 'lucide-react';
+import { Plus, Edit2, Trash2, DownloadCloud, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import ImportModal from '../components/ImportModal';
 import { api } from '../api';
 import { Table } from '../components/ui/Table';
 import { formatCurrency } from '../utils/format';
+import { useDebounce } from '../utils/useDebounce';
 
 const Items: React.FC = () => {
-  const { items, refreshData } = useAppContext();
+  const { refreshData } = useAppContext();
   const [showForm, setShowForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
+  const [itemsList, setItemsList] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [formData, setFormData] = useState({
     itemName: '',
     itemCode: '',
@@ -24,20 +31,44 @@ const Items: React.FC = () => {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  const fetchItems = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.getItems(page, 20, debouncedSearchTerm);
+      if (response.data) {
+        setItemsList(response.data);
+        setTotalPages(response.totalPages);
+      } else {
+        setItemsList(response);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchItems();
+  }, [page, debouncedSearchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm]);
+
   const handleImportItems = async (newItemsData: any[]) => {
     try {
       const toCreate = [];
       
       for (const item of newItemsData) {
         if (item.status === 'Update Rate' && item.existingItem) {
-          // Update existing item rate
           await api.updateItem(item.existingItem.id, {
             ...item.existingItem,
             rate: item.rate,
             unit: item.unit || item.existingItem.unit
           });
         } else {
-          // Create new item
           toCreate.push({
             itemName: item.name || item.itemName,
             itemCode: item.itemCode || item.code || '',
@@ -52,6 +83,7 @@ const Items: React.FC = () => {
         await api.bulkCreateItems(toCreate);
       }
       
+      await fetchItems();
       await refreshData();
       alert(`Import completed successfully!`);
     } catch (err) {
@@ -69,6 +101,7 @@ const Items: React.FC = () => {
       } else {
         await api.createItem(formData);
       }
+      await fetchItems();
       await refreshData();
       setShowForm(false);
       setEditingId(null);
@@ -92,9 +125,8 @@ const Items: React.FC = () => {
     setShowForm(true);
   };
 
-  // Helper to edit by id (used in Table renderRow)
   const editItemById = (id: string) => {
-    const itemObj = items.find((i: any) => i.id === id);
+    const itemObj = itemsList.find((i: any) => i.id === id);
     if (itemObj) editItem(itemObj);
   };
 
@@ -103,6 +135,7 @@ const Items: React.FC = () => {
       try {
         await api.deleteItem(id);
         setSelectedIds(selectedIds.filter(selId => selId !== id));
+        await fetchItems();
         await refreshData();
       } catch (err) {
         alert("Failed to delete item");
@@ -116,6 +149,7 @@ const Items: React.FC = () => {
       try {
         await api.bulkDeleteItems(selectedIds);
         setSelectedIds([]);
+        await fetchItems();
         await refreshData();
       } catch (err) {
         alert("Failed to delete items");
@@ -124,10 +158,10 @@ const Items: React.FC = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === items.length) {
+    if (selectedIds.length === itemsList.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(items.map((i: any) => i.id));
+      setSelectedIds(itemsList.map((i: any) => i.id));
     }
   };
 
@@ -143,12 +177,17 @@ const Items: React.FC = () => {
     <div>
       <div className="page-header">
         <h1 className="page-title">Items / Price List</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2" style={{ alignItems: 'center' }}>
           {selectedIds.length > 0 && (
             <button className="btn btn-secondary" onClick={handleBulkDelete} style={{ color: 'var(--danger-color)', borderColor: 'var(--danger-color)' }}>
               <Trash2 size={18} /> Delete Selected ({selectedIds.length})
             </button>
           )}
+          <div style={{ position: 'relative', width: '260px' }}>
+            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            <input type="text" className="form-control" placeholder="Search by name or code..."
+              style={{ paddingLeft: '40px' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          </div>
           <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
             <DownloadCloud size={18} /> Import Items
           </button>
@@ -220,45 +259,80 @@ const Items: React.FC = () => {
       )}
 
       <div className="card">
-        <Table
-          columns={[
-            { header: '', accessor: 'select', align: 'center' },
-            { header: 'Item Name', accessor: 'itemName' },
-            { header: 'Item Code', accessor: 'itemCode' },
-            { header: 'Unit', accessor: 'unit' },
-            { header: 'Rate (₹)', accessor: 'rate', align: 'right' },
-            { header: 'GST (%)', accessor: 'gst', align: 'center' },
-            { header: 'Actions', accessor: 'actions', align: 'center' }
-          ]}
-          data={items.map((item: any) => ({
-            select: item.id,
-            itemName: item.itemName,
-            itemCode: item.itemCode || '-',
-            unit: item.unit,
-            rate: formatCurrency(item.rate),
-            gst: item.gst || 0,
-            actions: item.id
-          }))}
-          renderRow={(row, idx) => (
-            <tr key={row.select} style={{ backgroundColor: selectedIds.includes(row.select) ? 'var(--primary-light)' : 'transparent' }}>
-              <td>
-                <input type="checkbox" checked={selectedIds.includes(row.select)} onChange={() => toggleSelect(row.select)} />
-              </td>
-              <td style={{ fontWeight: 500 }}>{row.itemName}</td>
-              <td>{row.itemCode}</td>
-              <td>{row.unit}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.rate}</td>
-              <td style={{ textAlign: 'center' }}>{row.gst}%</td>
-              <td>
-                <div className="flex gap-2 justify-center">
-                  <button className="btn-icon" onClick={() => editItemById(row.select)}><Edit2 size={16} /></button>
-                  <button className="btn-icon" onClick={() => deleteItem(row.select)} style={{ color: 'var(--danger-color)' }}><Trash2 size={16} /></button>
-                </div>
-              </td>
-            </tr>
-          )}
-          className=""
-        />
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>Loading items...</div>
+        ) : (
+          <>
+            <Table
+              columns={[
+                { header: <input type="checkbox" onChange={toggleSelectAll} checked={itemsList.length > 0 && selectedIds.length === itemsList.length} />, accessor: 'select', align: 'center' },
+                { header: 'Item Name', accessor: 'itemName' },
+                { header: 'Item Code', accessor: 'itemCode' },
+                { header: 'Unit', accessor: 'unit' },
+                { header: 'Rate (₹)', accessor: 'rate', align: 'right' },
+                { header: 'GST (%)', accessor: 'gst', align: 'center' },
+                { header: 'Actions', accessor: 'actions', align: 'center' }
+              ]}
+              data={itemsList.map((item: any) => ({
+                select: item.id,
+                itemName: item.itemName,
+                itemCode: item.itemCode || '-',
+                unit: item.unit,
+                rate: formatCurrency(item.rate),
+                gst: item.gst || 0,
+                actions: item.id
+              }))}
+              renderRow={(row, idx) => (
+                <tr key={row.select} style={{ backgroundColor: selectedIds.includes(row.select) ? 'var(--primary-light)' : 'transparent' }}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={selectedIds.includes(row.select)} onChange={() => toggleSelect(row.select)} />
+                  </td>
+                  <td style={{ fontWeight: 500 }}>{row.itemName}</td>
+                  <td>{row.itemCode}</td>
+                  <td>{row.unit}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.rate}</td>
+                  <td style={{ textAlign: 'center' }}>{row.gst}%</td>
+                  <td>
+                    <div className="flex gap-2 justify-center">
+                      <button className="btn-icon" onClick={() => editItemById(row.select)}><Edit2 size={16} /></button>
+                      <button className="btn-icon" onClick={() => deleteItem(row.select)} style={{ color: 'var(--danger-color)' }}><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              className=""
+            />
+            {itemsList.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
+                {searchTerm ? 'No items match your search.' : 'No items found. Add your first item!'}
+              </div>
+            )}
+            
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '24px', gap: '16px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
+                  style={{ padding: '6px 12px' }}
+                >
+                  <ChevronLeft size={16} /> Previous
+                </button>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  Page {page} of {totalPages}
+                </span>
+                <button 
+                  className="btn btn-secondary" 
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  style={{ padding: '6px 12px' }}
+                >
+                  Next <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

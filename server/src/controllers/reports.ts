@@ -8,7 +8,7 @@ router.get('/sales', async (req: Request, res: Response) => {
   try {
     const { fromDate, toDate } = req.query;
     
-    const whereClause: any = {};
+    const whereClause: any = { userId: req.userId };
     if (fromDate && toDate) {
       // Assuming fromDate and toDate are ISO strings like 2026-09-01T00:00:00.000Z
       whereClause.invoiceDate = {

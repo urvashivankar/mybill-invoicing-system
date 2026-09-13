@@ -82,17 +82,24 @@ const CreateBill: React.FC = () => {
   };
 
   useEffect(() => {
-    if (duplicateBillId) {
-      const oldBill = bills.find(b => b.id === duplicateBillId);
-      if (oldBill) { loadBillData(oldBill, true); fetchNextBillNumber(); }
-    } else if (editBillId) {
-      const oldBill = bills.find(b => b.id === editBillId);
-      if (oldBill) loadBillData(oldBill, false);
-    } else {
-      setNotes(settings.defaultNotes || '');
-      fetchNextBillNumber();
-    }
-  }, [duplicateBillId, editBillId, bills, settings]);
+    const init = async () => {
+      if (duplicateBillId) {
+        try {
+          const oldBill = await api.getBill(duplicateBillId);
+          if (oldBill) { loadBillData(oldBill, true); fetchNextBillNumber(); }
+        } catch(e) { console.error(e); }
+      } else if (editBillId) {
+        try {
+          const oldBill = await api.getBill(editBillId);
+          if (oldBill) loadBillData(oldBill, false);
+        } catch(e) { console.error(e); }
+      } else {
+        setNotes(settings.defaultNotes || '');
+        fetchNextBillNumber();
+      }
+    };
+    init();
+  }, [duplicateBillId, editBillId, settings]);
 
   const handleImportBill = (billData: any[]) => {
     if (!billData || billData.length === 0) return;

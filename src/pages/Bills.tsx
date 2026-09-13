@@ -1,24 +1,51 @@
-import React, { useState } from 'react';
-import { useAppContext } from '../context/AppContext';
-import { FileText, Copy, Search, Eye, DownloadCloud, Edit, Trash2, IndianRupee } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, Copy, Search, Eye, DownloadCloud, Edit, Trash2, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Table } from '../components/ui/Table';
 import { formatCurrency } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import RecordPaymentModal from '../components/RecordPaymentModal';
+import { useDebounce } from '../utils/useDebounce';
 
 const Bills: React.FC = () => {
-  const { bills } = useAppContext();
   const navigate = useNavigate();
+  const [bills, setBills] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [downloadModal, setDownloadModal] = useState<{ isOpen: boolean, billId: string | null, type: 'pdf' | 'excel' }>({ isOpen: false, billId: null, type: 'pdf' });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [paymentModalBill, setPaymentModalBill] = useState<any | null>(null);
 
-  const filteredBills = bills.filter(b => 
-    b.billNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (b.customerSnapshot?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const fetchBills = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.getBills(page, 20, debouncedSearchTerm);
+      if (response.data) {
+        setBills(response.data);
+        setTotalPages(response.totalPages);
+      } else {
+        setBills(response); // Fallback if API hasn't updated yet
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBills();
+  }, [page, debouncedSearchTerm]);
+
+  useEffect(() => {
+    setPage(1); // Reset page on search change
+  }, [debouncedSearchTerm]);
 
   const triggerDownload = (id: string, type: 'pdf' | 'excel') => {
     setDownloadModal({ isOpen: true, billId: id, type });
@@ -39,7 +66,7 @@ const Bills: React.FC = () => {
       try {
         await api.deleteBill(id);
         setSelectedIds(selectedIds.filter(selId => selId !== id));
-        window.location.reload(); // Simple refresh since refreshData isn't in Bills context directly
+        fetchBills();
       } catch (err) {
         alert("Failed to delete bill");
       }
@@ -52,7 +79,7 @@ const Bills: React.FC = () => {
       try {
         await api.bulkDeleteBills(selectedIds);
         setSelectedIds([]);
-        window.location.reload();
+        fetchBills();
       } catch (err) {
         alert("Failed to delete bills");
       }
@@ -60,10 +87,10 @@ const Bills: React.FC = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === filteredBills.length) {
+    if (selectedIds.length === bills.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredBills.map((b: any) => b.id));
+      setSelectedIds(bills.map((b: any) => b.id));
     }
   };
 
@@ -100,18 +127,20 @@ const Bills: React.FC = () => {
       </div>
 
       <div className="card">
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>Loading bills...</div>
+        ) : (
+          <>
             <Table
               columns={[
-                { header: '', accessor: 'select', align: 'center' },
+                { header: <input type="checkbox" onChange={toggleSelectAll} checked={bills.length > 0 && selectedIds.length === bills.length} />, accessor: 'select', align: 'center' },
                 { header: 'Invoice No', accessor: 'billNumber' },
-                
                 { header: 'Customer', accessor: 'customer' },
-    
                 { header: 'Total', accessor: 'total', align: 'right' },
                 { header: 'Balance', accessor: 'balance', align: 'right' },
                 { header: 'Actions', accessor: 'actions', align: 'center' }
               ]}
-              data={filteredBills.map((bill: any) => ({
+              data={bills.map((bill: any) => ({
                 select: bill.id,
                 billNumber: bill.billNumber,
                 date: new Date(bill.invoiceDate).toLocaleDateString(),
@@ -123,7 +152,7 @@ const Bills: React.FC = () => {
               }))}
               renderRow={(row, idx) => (
                 <tr key={row.select} style={{ backgroundColor: selectedIds.includes(row.select) ? 'var(--primary-light)' : 'transparent' }}>
-                  <td>
+                  <td style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={selectedIds.includes(row.select)} onChange={() => toggleSelect(row.select)} />
                   </td>
                   <td style={{ fontWeight: 600, color: 'var(--primary-color)' }}>{row.billNumber}</td>
@@ -143,7 +172,7 @@ const Bills: React.FC = () => {
                   <td>
                     <div className="flex gap-2 justify-center">
                       {row.status !== 'Paid' && (
-                        <button className="btn-icon" onClick={() => setPaymentModalBill(filteredBills.find((b:any)=>b.id===row.select))} title="Record Payment" style={{ color: '#059669' }}>
+                        <button className="btn-icon" onClick={() => setPaymentModalBill(bills.find((b:any)=>b.id===row.select))} title="Record Payment" style={{ color: '#059669' }}>
                           <IndianRupee size={18} />
                         </button>
                       )}
@@ -168,11 +197,38 @@ const Bills: React.FC = () => {
               )}
               className=""
             />
-            {filteredBills.length === 0 && (
+            {bills.length === 0 && (
               <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
-                No bills found. Create your first bill!
+                No bills found.
               </div>
             )}
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '24px', gap: '16px' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
+                  style={{ padding: '6px 12px' }}
+                >
+                  <ChevronLeft size={16} /> Previous
+                </button>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  Page {page} of {totalPages}
+                </span>
+                <button 
+                  className="btn btn-secondary" 
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  style={{ padding: '6px 12px' }}
+                >
+                  Next <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {downloadModal.isOpen && (
@@ -206,7 +262,7 @@ const Bills: React.FC = () => {
           onClose={() => setPaymentModalBill(null)}
           onSuccess={() => {
             setPaymentModalBill(null);
-            window.location.reload();
+            fetchBills(); // Re-fetch instead of reload
           }}
         />
       )}

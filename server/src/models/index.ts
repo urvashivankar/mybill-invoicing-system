@@ -1,10 +1,15 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../database';
+import { User, initUser } from './user';
+
+// Initialize User Model
+initUser(sequelize);
 
 // --- Business Settings ---
 export class BusinessSettings extends Model {}
 BusinessSettings.init({
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
   businessName: { type: DataTypes.STRING, defaultValue: 'My Business' },
   address: { type: DataTypes.TEXT },
   phone: { type: DataTypes.STRING },
@@ -22,35 +27,60 @@ BusinessSettings.init({
   defaultNotes: { type: DataTypes.TEXT },
   defaultTax: { type: DataTypes.FLOAT, defaultValue: 0 },
   defaultTemplate: { type: DataTypes.STRING, defaultValue: 'classic' }
-}, { sequelize, modelName: 'BusinessSettings' });
+}, { 
+  sequelize, 
+  modelName: 'BusinessSettings',
+  indexes: [
+    { fields: ['userId'] }
+  ]
+});
 
 // --- Customers ---
 export class Customer extends Model {}
 Customer.init({
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
   name: { type: DataTypes.STRING, allowNull: false },
   phone: { type: DataTypes.STRING },
   email: { type: DataTypes.STRING },
   address: { type: DataTypes.TEXT },
   gstNumber: { type: DataTypes.STRING }
-}, { sequelize, modelName: 'Customer' });
+}, { 
+  sequelize, 
+  modelName: 'Customer',
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['name'] },
+    { fields: ['phone'] }
+  ]
+});
 
 // --- Items (Price List) ---
 export class Item extends Model {}
 Item.init({
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
   itemName: { type: DataTypes.STRING, allowNull: false },
   itemCode: { type: DataTypes.STRING },
   unit: { type: DataTypes.STRING, defaultValue: 'pcs' },
   rate: { type: DataTypes.FLOAT, allowNull: false },
   gst: { type: DataTypes.FLOAT, defaultValue: 0 }
-}, { sequelize, modelName: 'Item' });
+}, { 
+  sequelize, 
+  modelName: 'Item',
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['itemName'] },
+    { fields: ['itemCode'] }
+  ]
+});
 
 // --- Bills ---
 export class Bill extends Model {}
 Bill.init({
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  billNumber: { type: DataTypes.STRING, allowNull: false, unique: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
+  billNumber: { type: DataTypes.STRING, allowNull: false },
   invoiceDate: { type: DataTypes.DATE, allowNull: false },
   orderDate: { type: DataTypes.DATE },
   vendorCode: { type: DataTypes.STRING },
@@ -71,7 +101,17 @@ Bill.init({
   amountPaid: { type: DataTypes.FLOAT, defaultValue: 0 },
   balanceDue: { type: DataTypes.FLOAT, defaultValue: 0 },
   paymentStatus: { type: DataTypes.STRING, defaultValue: 'Unpaid' } // Unpaid, Partially Paid, Paid
-}, { sequelize, modelName: 'Bill' });
+}, { 
+  sequelize, 
+  modelName: 'Bill',
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['billNumber'] },
+    { fields: ['customerId'] },
+    { fields: ['invoiceDate'] },
+    { fields: ['paymentStatus'] }
+  ]
+});
 
 // --- Bill Items ---
 export class BillItem extends Model {}
@@ -86,23 +126,39 @@ BillItem.init({
   rate: { type: DataTypes.FLOAT, allowNull: false },
   gst: { type: DataTypes.FLOAT, defaultValue: 0 },
   amount: { type: DataTypes.FLOAT, allowNull: false } // qty * rate
-}, { sequelize, modelName: 'BillItem' });
+}, { 
+  sequelize, 
+  modelName: 'BillItem',
+  indexes: [
+    { fields: ['billId'] },
+    { fields: ['itemId'] }
+  ]
+});
 
 // --- Payments ---
 export class Payment extends Model {}
 Payment.init({
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
   billId: { type: DataTypes.UUID, allowNull: false },
   amount: { type: DataTypes.FLOAT, allowNull: false },
   paymentDate: { type: DataTypes.DATE, allowNull: false },
   notes: { type: DataTypes.TEXT }
-}, { sequelize, modelName: 'Payment' });
+}, { 
+  sequelize, 
+  modelName: 'Payment',
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['billId'] }
+  ]
+});
 
 // --- Quotations ---
 export class Quotation extends Model {}
 Quotation.init({
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  quotationNumber: { type: DataTypes.STRING, allowNull: false, unique: true },
+  userId: { type: DataTypes.UUID, allowNull: true },
+  quotationNumber: { type: DataTypes.STRING, allowNull: false },
   quotationDate: { type: DataTypes.DATE, allowNull: false },
   validUntil: { type: DataTypes.DATE },
   customerId: { type: DataTypes.UUID, allowNull: true },
@@ -117,7 +173,17 @@ Quotation.init({
   bankDetailsSnapshot: { type: DataTypes.JSON },
   status: { type: DataTypes.STRING, defaultValue: 'Draft' }, // Draft, Sent, Accepted, Rejected, Converted
   convertedToBillId: { type: DataTypes.UUID, allowNull: true }
-}, { sequelize, modelName: 'Quotation' });
+}, { 
+  sequelize, 
+  modelName: 'Quotation',
+  indexes: [
+    { fields: ['userId'] },
+    { fields: ['quotationNumber'] },
+    { fields: ['customerId'] },
+    { fields: ['quotationDate'] },
+    { fields: ['status'] }
+  ]
+});
 
 // --- Quotation Items ---
 export class QuotationItem extends Model {}
@@ -132,9 +198,34 @@ QuotationItem.init({
   rate: { type: DataTypes.FLOAT, allowNull: false },
   gst: { type: DataTypes.FLOAT, defaultValue: 0 },
   amount: { type: DataTypes.FLOAT, allowNull: false }
-}, { sequelize, modelName: 'QuotationItem' });
+}, { 
+  sequelize, 
+  modelName: 'QuotationItem',
+  indexes: [
+    { fields: ['quotationId'] },
+    { fields: ['itemId'] }
+  ]
+});
 
 // Relationships
+User.hasMany(Customer, { foreignKey: 'userId', as: 'customers', onDelete: 'CASCADE' });
+Customer.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Item, { foreignKey: 'userId', as: 'items', onDelete: 'CASCADE' });
+Item.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Bill, { foreignKey: 'userId', as: 'bills', onDelete: 'CASCADE' });
+Bill.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Quotation, { foreignKey: 'userId', as: 'quotations', onDelete: 'CASCADE' });
+Quotation.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Payment, { foreignKey: 'userId', as: 'payments', onDelete: 'CASCADE' });
+Payment.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(BusinessSettings, { foreignKey: 'userId', as: 'settings', onDelete: 'CASCADE' });
+BusinessSettings.belongsTo(User, { foreignKey: 'userId' });
+
 Bill.hasMany(BillItem, { foreignKey: 'billId', as: 'items', onDelete: 'CASCADE' });
 BillItem.belongsTo(Bill, { foreignKey: 'billId' });
 
@@ -144,20 +235,32 @@ Payment.belongsTo(Bill, { foreignKey: 'billId' });
 Quotation.hasMany(QuotationItem, { foreignKey: 'quotationId', as: 'items', onDelete: 'CASCADE' });
 QuotationItem.belongsTo(Quotation, { foreignKey: 'quotationId' });
 
-// Seed Default Settings
+// Seed Default Settings & Export User
+export { User };
+
 export const initDB = async () => {
   try {
     await sequelize.query('PRAGMA foreign_keys = OFF');
     await sequelize.query('DROP TABLE IF EXISTS `Bills_backup`');
     await sequelize.query('DROP TABLE IF EXISTS `BillItems_backup`');
     await sequelize.sync({ alter: true });
+    
+    // Manually ensure userId exists because SQLite alter: true sometimes fails silently
+    const tables = await sequelize.getQueryInterface().showAllTables();
+    for (const table of tables) {
+      if (table === 'Users' || table === 'Bills_backup' || table === 'BillItems_backup' || table.includes('sqlite')) continue;
+      try {
+        await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN userId CHAR(36)`);
+        console.log(`Added userId column to ${table}`);
+      } catch (e: any) {
+        if (!e.message.includes('duplicate column name')) {
+          console.error(`Error adding userId to ${table}:`, e.message);
+        }
+      }
+    }
+    
     await sequelize.query('PRAGMA foreign_keys = ON');
   } catch (err) {
     console.error("Database Sync Error:", err);
-  }
-  
-  const settingsCount = await BusinessSettings.count();
-  if (settingsCount === 0) {
-    await BusinessSettings.create({});
   }
 };

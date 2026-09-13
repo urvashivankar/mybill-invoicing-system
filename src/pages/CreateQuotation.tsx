@@ -74,17 +74,24 @@ const CreateQuotation: React.FC = () => {
   };
 
   useEffect(() => {
-    if (duplicateQuotationId) {
-      const oldQt = quotations.find(q => q.id === duplicateQuotationId);
-      if (oldQt) { loadQuotationData(oldQt, true); fetchNextQuotationNumber(); }
-    } else if (editQuotationId) {
-      const oldQt = quotations.find(q => q.id === editQuotationId);
-      if (oldQt) loadQuotationData(oldQt, false);
-    } else {
-      setNotes(settings.defaultNotes || '');
-      fetchNextQuotationNumber();
-    }
-  }, [duplicateQuotationId, editQuotationId, quotations, settings]);
+    const init = async () => {
+      if (duplicateQuotationId) {
+        try {
+          const oldQt = await api.getQuotation(duplicateQuotationId);
+          if (oldQt) { loadQuotationData(oldQt, true); fetchNextQuotationNumber(); }
+        } catch(e) { console.error(e); }
+      } else if (editQuotationId) {
+        try {
+          const oldQt = await api.getQuotation(editQuotationId);
+          if (oldQt) loadQuotationData(oldQt, false);
+        } catch(e) { console.error(e); }
+      } else {
+        setNotes(settings.defaultNotes || '');
+        fetchNextQuotationNumber();
+      }
+    };
+    init();
+  }, [duplicateQuotationId, editQuotationId, settings]);
 
   const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;

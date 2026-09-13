@@ -6,8 +6,13 @@ const router = Router();
 // Get payments for a specific bill
 router.get('/:billId', async (req: Request, res: Response) => {
   try {
+    const bill = await Bill.findOne({ where: { id: req.params.billId, userId: req.userId } });
+    if (!bill) {
+      return res.status(404).json({ error: 'Bill not found' });
+    }
+
     const payments = await Payment.findAll({
-      where: { billId: req.params.billId },
+      where: { billId: req.params.billId, userId: req.userId },
       order: [['paymentDate', 'ASC']]
     });
     res.json(payments);
@@ -29,7 +34,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Payment amount must be greater than 0' });
     }
 
-    const bill = await Bill.findByPk(billId);
+    const bill = await Bill.findOne({ where: { id: billId, userId: req.userId } });
     if (!bill) {
       return res.status(404).json({ error: 'Bill not found' });
     }
@@ -44,6 +49,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Create payment record
     const payment = await Payment.create({
+      userId: req.userId,
       billId,
       amount,
       paymentDate: paymentDate || new Date(),
@@ -68,7 +74,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     // Return the updated bill to sync frontend
-    const updatedBill = await Bill.findByPk(billId);
+    const updatedBill = await Bill.findOne({ where: { id: billId, userId: req.userId } });
 
     res.json({ payment, bill: updatedBill });
   } catch (error: any) {

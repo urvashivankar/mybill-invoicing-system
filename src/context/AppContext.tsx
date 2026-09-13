@@ -15,6 +15,12 @@ interface AppContextType {
   setSettings: React.Dispatch<React.SetStateAction<BusinessSettings>>;
   refreshData: () => Promise<void>;
   isLoading: boolean;
+  
+  // Auth
+  isAuthenticated: boolean;
+  user: any;
+  loginState: (userData: any, token: string) => void;
+  logout: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -30,31 +36,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('token'));
+  const [user, setUser] = useState<any>(JSON.parse(localStorage.getItem('user') || 'null'));
+
+  const loginState = (userData: any, token: string) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    setIsAuthenticated(true);
+    refreshData();
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setIsAuthenticated(false);
+    // Clear data
+    setItems([]);
+    setCustomers([]);
+    setBills([]);
+    setQuotations([]);
+    window.location.href = '/login';
+  };
+
+  useEffect(() => {
+    const handleAuthExpired = () => logout();
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+  }, []);
+
   const refreshData = async () => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+    
     try {
-      const [fetchedSettings, fetchedItems, fetchedCustomers, fetchedBills, fetchedQuotations] = await Promise.all([
+      setIsLoading(true);
+      const [fetchedSettings, fetchedItems, fetchedCustomers] = await Promise.all([
         api.getSettings(),
         api.getItems(),
-        api.getCustomers(),
-        api.getBills(),
-        api.getQuotations()
+        api.getCustomers()
       ]);
-      if (fetchedSettings) setSettings(fetchedSettings);
-      setItems(fetchedItems || []);
-      setCustomers(fetchedCustomers || []);
-      setBills(fetchedBills || []);
-      setQuotations(fetchedQuotations || []);
+      if (fetchedSettings && !fetchedSettings.error) setSettings(fetchedSettings);
+      
+      const safeItems = fetchedItems?.error ? [] : (fetchedItems?.data || fetchedItems || []);
+      const safeCustomers = fetchedCustomers?.error ? [] : (fetchedCustomers?.data || fetchedCustomers || []);
+      
+      setItems(safeItems);
+      setCustomers(safeCustomers);
+      setBills([]); 
+      setQuotations([]); 
     } catch (error) {
       console.error("Failed to fetch initial data from backend:", error);
-      alert("Failed to connect to backend server. Is it running on port 5000?");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    refreshData();
-  }, []);
+    if (isAuthenticated) {
+      refreshData();
+    } else {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
 
   return (
     <AppContext.Provider value={{ 
@@ -64,7 +112,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       quotations, setQuotations,
       settings, setSettings,
       refreshData,
-      isLoading
+      isLoading,
+      isAuthenticated,
+      user,
+      loginState,
+      logout
     }}>
       {children}
     </AppContext.Provider>

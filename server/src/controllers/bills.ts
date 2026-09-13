@@ -1,25 +1,50 @@
 import { Router, Request, Response } from 'express';
 import { Bill, BillItem, BusinessSettings } from '../models';
+import { Op } from 'sequelize';
 
 const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const bills = await Bill.findAll({ 
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const search = (req.query.search as string) || '';
+    const offset = (page - 1) * limit;
+
+    let whereClause: any = { userId: req.userId };
+    if (search) {
+      whereClause = {
+        ...whereClause,
+        [Op.or]: [
+          { billNumber: { [Op.like]: `%${search}%` } },
+          { customerSnapshot: { [Op.like]: `%${search}%` } }
+        ]
+      };
+    }
+
+    const { count, rows } = await Bill.findAndCountAll({ 
+      where: whereClause,
       include: [{ model: BillItem, as: 'items' }],
-      order: [['invoiceDate', 'DESC'], ['createdAt', 'DESC']]
+      order: [['invoiceDate', 'DESC'], ['createdAt', 'DESC']],
+      limit: limit === -1 ? undefined : limit,
+      offset: limit === -1 ? undefined : offset
     });
-    res.json(bills);
+    
+    if (req.query.page) {
+       res.json({ total: count, page, limit, totalPages: limit === -1 ? 1 : Math.ceil(count / limit), data: rows });
+    } else {
+       res.json(rows);
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-const getNextBillNumber = async () => {
-  const settings = await BusinessSettings.findOne();
+const getNextBillNumber = async (userId: string) => {
+  const settings = await BusinessSettings.findOne({ where: { userId } });
   const prefix = settings?.dataValues?.invoicePrefix || 'INV-';
   
-  const bills = await Bill.findAll({ attributes: ['billNumber'] });
+  const bills = await Bill.findAll({ attributes: ['billNumber'], where: { userId } });
   let maxNum = 0;
   for (const b of bills) {
     const billNum = b.dataValues.billNumber;
@@ -36,7 +61,7 @@ const getNextBillNumber = async () => {
 
 router.get('/next-number', async (req: Request, res: Response) => {
   try {
-    const nextBillNumber = await getNextBillNumber();
+    const nextBillNumber = await getNextBillNumber(req.userId as string);
     res.json({ nextBillNumber });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -45,7 +70,8 @@ router.get('/next-number', async (req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const bill = await Bill.findByPk(req.params.id, {
+    const bill = await Bill.findOne({
+      where: { id: req.params.id, userId: req.userId },
       include: [{ model: BillItem, as: 'items' }]
     });
     if (!bill) return res.status(404).json({ error: 'Not found' });
@@ -58,13 +84,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { items, ...billData } = req.body;
+    billData.userId = req.userId;
     
-    // Auto-generate Bill Number if not provided
     if (!billData.billNumber) {
-      billData.billNumber = await getNextBillNumber();
+      billData.billNumber = await getNextBillNumber(req.userId as string);
     }
 
-    // Initialize payment fields
     if (billData.amountPaid === undefined) billData.amountPaid = 0;
     billData.balanceDue = (billData.grandTotal || 0) - billData.amountPaid;
     if (billData.balanceDue <= 0 && billData.grandTotal > 0) {
@@ -82,7 +107,8 @@ router.post('/', async (req: Request, res: Response) => {
       await BillItem.bulkCreate(billItems);
     }
     
-    const createdBill = await Bill.findByPk(bill.dataValues.id, {
+    const createdBill = await Bill.findOne({
+      where: { id: bill.dataValues.id, userId: req.userId },
       include: [{ model: BillItem, as: 'items' }]
     });
     
@@ -94,12 +120,11 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const bill = await Bill.findByPk(req.params.id);
+    const bill = await Bill.findOne({ where: { id: req.params.id, userId: req.userId } });
     if (!bill) return res.status(404).json({ error: 'Not found' });
     
     const { items, ...billData } = req.body;
     
-    // Re-calculate payment fields if grandTotal changes
     const amountPaid = bill.dataValues.amountPaid || 0;
     const newGrandTotal = billData.grandTotal !== undefined ? billData.grandTotal : bill.dataValues.grandTotal;
     billData.balanceDue = newGrandTotal - amountPaid;
@@ -114,16 +139,16 @@ router.put('/:id', async (req: Request, res: Response) => {
     await bill.update(billData);
 
     if (items) {
-      // Very simple replace-all logic for items on update
       await BillItem.destroy({ where: { billId: bill.dataValues.id } });
       const billItems = items.map((i: any) => {
-        delete i.id; // ensure new ID is generated
+        delete i.id;
         return { ...i, billId: bill.dataValues.id };
       });
       await BillItem.bulkCreate(billItems);
     }
 
-    const updatedBill = await Bill.findByPk(bill.dataValues.id, {
+    const updatedBill = await Bill.findOne({
+      where: { id: bill.dataValues.id, userId: req.userId },
       include: [{ model: BillItem, as: 'items' }]
     });
     
@@ -135,7 +160,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const bill = await Bill.findByPk(req.params.id);
+    const bill = await Bill.findOne({ where: { id: req.params.id, userId: req.userId } });
     if (!bill) return res.status(404).json({ error: 'Not found' });
     
     await bill.destroy();
@@ -150,7 +175,7 @@ router.post('/bulk-delete', async (req: Request, res: Response) => {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'Invalid ids' });
     
-    await Bill.destroy({ where: { id: ids } });
+    await Bill.destroy({ where: { id: ids, userId: req.userId } });
     res.json({ message: `${ids.length} bills deleted successfully` });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

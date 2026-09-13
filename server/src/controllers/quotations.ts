@@ -1,23 +1,52 @@
 import { Router, Request, Response } from 'express';
 import { Quotation, QuotationItem, Bill, BillItem, BusinessSettings } from '../models';
+import { Op } from 'sequelize';
 
 const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const quotations = await Quotation.findAll({ 
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const search = (req.query.search as string) || '';
+    const status = (req.query.status as string) || '';
+    const offset = (page - 1) * limit;
+
+    let whereClause: any = { userId: req.userId };
+    if (search) {
+      whereClause = {
+        ...whereClause,
+        [Op.or]: [
+          { quotationNumber: { [Op.like]: `%${search}%` } },
+          { customerSnapshot: { [Op.like]: `%${search}%` } }
+        ]
+      };
+    }
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const { count, rows } = await Quotation.findAndCountAll({
+      where: whereClause,
       include: [{ model: QuotationItem, as: 'items' }],
-      order: [['quotationDate', 'DESC'], ['createdAt', 'DESC']]
+      order: [['quotationDate', 'DESC'], ['createdAt', 'DESC']],
+      limit: limit === -1 ? undefined : limit,
+      offset: limit === -1 ? undefined : offset
     });
-    res.json(quotations);
+
+    if (req.query.page) {
+      res.json({ total: count, page, limit, totalPages: limit === -1 ? 1 : Math.ceil(count / limit), data: rows });
+    } else {
+      res.json(rows);
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-const getNextQuotationNumber = async () => {
+const getNextQuotationNumber = async (userId: string) => {
   const prefix = 'QT-';
-  const quotations = await Quotation.findAll({ attributes: ['quotationNumber'] });
+  const quotations = await Quotation.findAll({ attributes: ['quotationNumber'], where: { userId } });
   let maxNum = 0;
   for (const q of quotations) {
     const qtNum = q.dataValues.quotationNumber;
@@ -34,7 +63,7 @@ const getNextQuotationNumber = async () => {
 
 router.get('/next-number', async (req: Request, res: Response) => {
   try {
-    const nextNumber = await getNextQuotationNumber();
+    const nextNumber = await getNextQuotationNumber(req.userId as string);
     res.json({ nextNumber });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -43,7 +72,8 @@ router.get('/next-number', async (req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id, {
+    const qt = await Quotation.findOne({
+      where: { id: req.params.id, userId: req.userId },
       include: [{ model: QuotationItem, as: 'items' }]
     });
     if (!qt) return res.status(404).json({ error: 'Not found' });
@@ -56,9 +86,10 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { items, ...qtData } = req.body;
+    qtData.userId = req.userId;
     
     if (!qtData.quotationNumber) {
-      qtData.quotationNumber = await getNextQuotationNumber();
+      qtData.quotationNumber = await getNextQuotationNumber(req.userId as string);
     }
 
     const qt = await Quotation.create(qtData);
@@ -68,7 +99,8 @@ router.post('/', async (req: Request, res: Response) => {
       await QuotationItem.bulkCreate(qtItems);
     }
     
-    const createdQt = await Quotation.findByPk(qt.dataValues.id, {
+    const createdQt = await Quotation.findOne({
+      where: { id: qt.dataValues.id, userId: req.userId },
       include: [{ model: QuotationItem, as: 'items' }]
     });
     
@@ -80,7 +112,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id);
+    const qt = await Quotation.findOne({ where: { id: req.params.id, userId: req.userId } });
     if (!qt) return res.status(404).json({ error: 'Not found' });
     
     const { items, ...qtData } = req.body;
@@ -95,7 +127,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       await QuotationItem.bulkCreate(qtItems);
     }
 
-    const updatedQt = await Quotation.findByPk(qt.dataValues.id, {
+    const updatedQt = await Quotation.findOne({
+      where: { id: qt.dataValues.id, userId: req.userId },
       include: [{ model: QuotationItem, as: 'items' }]
     });
     
@@ -107,7 +140,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id);
+    const qt = await Quotation.findOne({ where: { id: req.params.id, userId: req.userId } });
     if (!qt) return res.status(404).json({ error: 'Not found' });
     
     await qt.destroy();
@@ -120,15 +153,16 @@ router.delete('/:id', async (req: Request, res: Response) => {
 // Convert Quotation to Bill
 router.post('/:id/convert', async (req: Request, res: Response) => {
   try {
-    const qt = await Quotation.findByPk(req.params.id, {
+    const qt = await Quotation.findOne({
+      where: { id: req.params.id, userId: req.userId },
       include: [{ model: QuotationItem, as: 'items' }]
     });
     if (!qt) return res.status(404).json({ error: 'Not found' });
 
     // Generate new Bill Number
-    const settings = await BusinessSettings.findOne();
+    const settings = await BusinessSettings.findOne({ where: { userId: req.userId } });
     const prefix = settings?.dataValues?.invoicePrefix || 'INV-';
-    const bills = await Bill.findAll({ attributes: ['billNumber'] });
+    const bills = await Bill.findAll({ attributes: ['billNumber'], where: { userId: req.userId } });
     let maxNum = 0;
     for (const b of bills) {
       const billNum = b.dataValues.billNumber;
@@ -142,6 +176,7 @@ router.post('/:id/convert', async (req: Request, res: Response) => {
 
     // Create the Bill
     const billData = {
+      userId: req.userId,
       billNumber: newBillNumber,
       invoiceDate: new Date(),
       customerId: qt.dataValues.customerId,
@@ -184,7 +219,8 @@ router.post('/:id/convert', async (req: Request, res: Response) => {
       convertedToBillId: newBill.dataValues.id
     });
 
-    const createdBill = await Bill.findByPk(newBill.dataValues.id, {
+    const createdBill = await Bill.findOne({
+      where: { id: newBill.dataValues.id, userId: req.userId },
       include: [{ model: BillItem, as: 'items' }]
     });
 

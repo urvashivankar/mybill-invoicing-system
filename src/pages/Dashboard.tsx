@@ -1,18 +1,51 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { FileText, Calendar, TrendingUp, Users, Plus, DownloadCloud } from 'lucide-react';
 import { Table } from '../components/ui/Table';
 import { formatCurrency } from '../utils/format';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../api';
 
 const Dashboard: React.FC = () => {
-  const { bills, customers, items } = useAppContext();
+  const { customers, items } = useAppContext();
   const navigate = useNavigate();
 
-  const totalSales = bills.reduce((sum, bill) => sum + bill.grandTotal, 0);
-  const totalOutstanding = bills.reduce((sum, bill) => sum + (bill.grandTotal - (bill.amountPaid || 0)), 0);
+  const [stats, setStats] = useState({
+    totalBills: 0,
+    totalSales: 0,
+    totalOutstanding: 0,
+    totalCustomers: 0,
+    recentBills: [] as any[]
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const recentBills = [...bills].slice(0, 5);
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const data = await api.getDashboardStats();
+        if (data && !data.error) {
+          setStats(data);
+        } else {
+          console.error("Backend error fetching stats:", data?.error);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dashboard stats", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  const { totalBills, totalSales, totalOutstanding, totalCustomers, recentBills } = stats;
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        Loading dashboard statistics...
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -36,7 +69,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TOTAL BILLS</p>
-              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{bills.length}</h3>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{totalBills}</h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>All time invoices</p>
             </div>
           </div>
@@ -50,7 +83,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TOTAL SALES</p>
-              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>₹{totalSales.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h3>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>₹{(totalSales || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>All time revenue</p>
             </div>
           </div>
@@ -64,7 +97,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>OUTSTANDING</p>
-              <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#DC2626' }}>₹{totalOutstanding.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h3>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#DC2626' }}>₹{(totalOutstanding || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Pending payments</p>
             </div>
           </div>
@@ -78,7 +111,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TOTAL CUSTOMERS</p>
-              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{customers.length}</h3>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{totalCustomers}</h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Active customers</p>
             </div>
           </div>
@@ -91,7 +124,7 @@ const Dashboard: React.FC = () => {
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h2 style={{ fontSize: '1.125rem' }}>Recent Bills</h2>
-            {bills.length > 0 && (
+            {totalBills > 0 && (
               <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }} onClick={() => navigate('/bills')}>
                 View All
               </button>
