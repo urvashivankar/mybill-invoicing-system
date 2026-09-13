@@ -224,7 +224,7 @@ router.post('/bill', upload.single('file'), async (req: Request, res: Response) 
       const text = ext === 'pdf' ? (await pdfParse(req.file.buffer)).text : (await Tesseract.recognize(req.file.buffer, 'eng')).data.text;
       const parsedItems = attemptTextExtraction(text);
       
-      if (parsedItems.length > 0 && parsedItems[0].error) {
+      if (parsedItems.length > 0 && (parsedItems[0] as any).error) {
         return res.status(400).json(parsedItems[0]);
       }
       
