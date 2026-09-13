@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
+// @ts-ignore
 import pdfParse from 'pdf-parse';
 
 const router = Router();

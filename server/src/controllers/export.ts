@@ -276,7 +276,7 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
     
     if (req.query.template) {
-      bill.templateType = req.query.template as string;
+      (bill as any).templateType = req.query.template as string;
     }
 
     const html = getHtmlTemplate(bill, settings);
@@ -384,8 +384,8 @@ const generateExcelWorkbook = async (bill: any, settings: any, res: Response, is
   worksheet.getCell(`E${6 + startItemRowOffset}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
   // Clean outer borders for the header block (No inner grid)
-  const headerOutline = { style: 'medium', color: { argb: primaryColor } } as ExcelJS.BorderStyle;
-  const headerThin = { style: 'thin', color: { argb: primaryColor } } as ExcelJS.BorderStyle;
+  const headerOutline = { style: 'medium', color: { argb: primaryColor } } as Partial<ExcelJS.Border>;
+  const headerThin = { style: 'thin', color: { argb: primaryColor } } as Partial<ExcelJS.Border>;
   
   // Top border
   for(let c=1; c<=5; c++) worksheet.getCell(2, c).border = { top: headerOutline };
@@ -413,7 +413,7 @@ const generateExcelWorkbook = async (bill: any, settings: any, res: Response, is
 
   // === ITEMS ===
   currentRow++;
-  const itemBorder = { style: 'thin', color: { argb: borderColor } } as ExcelJS.BorderStyle;
+  const itemBorder = { style: 'thin', color: { argb: borderColor } } as Partial<ExcelJS.Border>;
   
   const itemsList = bill.dataValues?.items || bill.items || [];
   itemsList.forEach((item: any, i: number) => {

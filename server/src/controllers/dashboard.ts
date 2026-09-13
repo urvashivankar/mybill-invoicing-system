@@ -12,8 +12,8 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       attributes: ['grandTotal', 'amountPaid', 'paymentStatus']
     });
 
-    const totalSales = bills.reduce((sum, bill) => sum + (bill.grandTotal || 0), 0);
-    const totalOutstanding = bills.reduce((sum, bill) => sum + ((bill.grandTotal || 0) - (bill.amountPaid || 0)), 0);
+    const totalSales = bills.reduce((sum, bill: any) => sum + (bill.grandTotal || 0), 0);
+    const totalOutstanding = bills.reduce((sum, bill: any) => sum + ((bill.grandTotal || 0) - (bill.amountPaid || 0)), 0);
 
     const recentBills = await Bill.findAll({
       where: { userId: req.userId },
