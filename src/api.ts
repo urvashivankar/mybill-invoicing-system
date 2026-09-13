@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.DEV 
+  ? 'http://localhost:5000/api' 
+  : 'https://mybill-invoicing-system.onrender.com/api';
 
 const getToken = () => localStorage.getItem('token');
 
